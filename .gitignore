@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+env/
+
+# Environment variables
+.env
+
+# Model files (optional)
+# Uncomment if you DON'T want to upload model
+# model.pkl
+
+# Logs
+logs.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Jupyter notebooks (optional)
+.ipynb_checkpoints/
