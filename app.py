@@ -1,5 +1,5 @@
 """
-SentinelAPI — Flask Backend (FIXED + AUTO DB MIGRATION)
+SentinelAPI — Flask Backend (PRODUCTION READY)
 """
 
 import os
@@ -24,16 +24,18 @@ logger = logging.getLogger("sentinel")
 app = Flask(__name__)
 CORS(app)
 
-DATABASE = "metrics.db"
-MODEL_PATH = "model.pkl"
+# ── PATH FIX (IMPORTANT) ─────────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, "metrics.db")
+MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
 
 # ── LOAD MODEL ───────────────────────────────────────
 try:
     model = joblib.load(MODEL_PATH)
-    logger.info("Model loaded")
-except:
+    logger.info(f"✅ Model loaded from {MODEL_PATH}")
+except Exception as e:
     model = None
-    logger.warning("Model not found — using rule-based")
+    logger.warning(f"⚠️ Model not found — using rule-based: {e}")
 
 # ── DB ───────────────────────────────────────────────
 @contextmanager
@@ -43,8 +45,9 @@ def get_db():
     try:
         yield conn
         conn.commit()
-    except:
+    except Exception as e:
         conn.rollback()
+        logger.error(f"DB Error: {e}")
         raise
     finally:
         conn.close()
@@ -57,7 +60,6 @@ def column_exists(conn, table, column):
 
 def init_db():
     with get_db() as conn:
-        # CREATE TABLE
         conn.execute("""
             CREATE TABLE IF NOT EXISTS metrics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,14 +72,14 @@ def init_db():
             )
         """)
 
-        # 🔥 AUTO ADD MISSING COLUMNS (FIX)
+        # Auto-migration
         if not column_exists(conn, "metrics", "prediction"):
             conn.execute("ALTER TABLE metrics ADD COLUMN prediction TEXT")
 
         if not column_exists(conn, "metrics", "confidence"):
             conn.execute("ALTER TABLE metrics ADD COLUMN confidence REAL")
 
-    logger.info("DB READY (auto-migrated)")
+    logger.info("✅ DB READY (auto-migrated)")
 
 # ── TIMER ─────────────────────────────────────────────
 @app.before_request
@@ -98,7 +100,7 @@ def after_request(response):
                 memory_usage=psutil.virtual_memory().percent,
             )
         except Exception as e:
-            logger.error("Auto-ingest failed: %s", e)
+            logger.error(f"Auto-ingest failed: {e}")
 
     return response
 
@@ -110,6 +112,7 @@ def rule_risk(rt, sc, cpu, mem):
     if cpu > 85: risk += 20
     if mem > 85: risk += 10
     return min(risk, 100)
+
 
 def _store_metric(
     response_time,
@@ -135,30 +138,35 @@ def home():
 
 @app.post("/predict")
 def predict():
-    data = request.json
+    try:
+        data = request.json
 
-    rt = float(data["response_time"])
-    sc = int(data["status_code"])
-    cpu = float(data["cpu_usage"])
-    mem = float(data["memory_usage"])
+        rt = float(data["response_time"])
+        sc = int(data["status_code"])
+        cpu = float(data["cpu_usage"])
+        mem = float(data["memory_usage"])
 
-    if model:
-        pred = model.predict([[rt, sc, cpu, mem]])[0]
-        prob = model.predict_proba([[rt, sc, cpu, mem]])[0][1]
-        risk = int(prob * 100)
-        text = "High Risk ⚠️" if pred else "Stable ✅"
-    else:
-        risk = rule_risk(rt, sc, cpu, mem)
-        prob = risk / 100
-        text = "High Risk ⚠️" if risk > 50 else "Stable ✅"
+        if model:
+            pred = model.predict([[rt, sc, cpu, mem]])[0]
+            prob = model.predict_proba([[rt, sc, cpu, mem]])[0][1]
+            risk = int(prob * 100)
+            text = "High Risk ⚠️" if pred else "Stable ✅"
+        else:
+            risk = rule_risk(rt, sc, cpu, mem)
+            prob = risk / 100
+            text = "High Risk ⚠️" if risk > 50 else "Stable ✅"
 
-    _store_metric(rt, sc, cpu, mem, risk, text, prob)
+        _store_metric(rt, sc, cpu, mem, risk, text, prob)
 
-    return jsonify({
-        "prediction": text,
-        "risk_score": risk,
-        "confidence": prob
-    })
+        return jsonify({
+            "prediction": text,
+            "risk_score": risk,
+            "confidence": prob
+        })
+
+    except Exception as e:
+        logger.error(f"Prediction error: {e}")
+        return jsonify({"error": "Invalid input"}), 400
 
 
 @app.get("/history")
@@ -182,8 +190,11 @@ def err(e):
     return jsonify({"error": "Internal server error"}), 500
 
 
-# ── START ─────────────────────────────────────────────
+# ── INIT ─────────────────────────────────────────────
 init_db()
 
+# ── START (RENDER SAFE) ─────────────────────────────
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    logger.info(f"🚀 Starting server on port {port}")
+    app.run(host="0.0.0.0", port=port)
