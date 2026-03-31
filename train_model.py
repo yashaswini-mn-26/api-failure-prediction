@@ -1,11 +1,3 @@
-"""
-train_model.py
-Trains a Random Forest failure predictor and saves model.pkl.
-
-Usage:
-    python train_model.py --data api_logs.csv --out model.pkl
-"""
-
 import argparse
 import joblib
 import numpy as np
@@ -21,10 +13,8 @@ from sklearn.metrics import (
     average_precision_score,
 )
 
-
 FEATURES = ["response_time", "status_code", "cpu_usage", "memory_usage"]
 TARGET   = "failure"
-
 
 def load_and_validate(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
