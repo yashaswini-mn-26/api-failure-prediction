@@ -133,7 +133,6 @@ def _store_metric(rt, sc, cpu, mem, risk=0, pred=None, conf=None):
 # ── ADD THIS IMPORT (top with others) ─────────────────────────
 from urllib.parse import urlparse
 
-# ── ADD THIS FUNCTION (anywhere above proxy routes) ───────────
 def is_internal_url(base_url: str, request) -> bool:
     try:
         parsed = urlparse(base_url)
@@ -142,11 +141,10 @@ def is_internal_url(base_url: str, request) -> bool:
 
         return (
             host in ("localhost", "127.0.0.1") or
-            host == current_host or
-            (host and host.endswith("onrender.com") and current_host.endswith("onrender.com"))
+            host == current_host
         )
     except:
-        return True  # fail safe
+        return True
 
 # ── EXISTING ROUTES ───────────────────────────────────────────────────────────
 
@@ -253,9 +251,9 @@ HTTP_METHODS_BY_FRAMEWORK = {
 }
 
 FRAMEWORK_FILES = {
-    "flask":   ["app.py", "routes.py", "views.py", "api.py", "main.py"],
+    "flask":   ["app.py", "routes.py", "api.py", "main.py"],
     "fastapi": ["main.py", "app.py", "router.py", "api.py"],
-    "django":  ["urls.py"],
+    "django":  ["manage.py", "settings.py", "urls.py", "asgi.py", "wsgi.py"],  # 🔥 UPDATED
     "express": ["app.js", "routes.js", "index.js", "server.js", "app.ts", "routes.ts"],
     "rails":   ["routes.rb"],
 }
@@ -263,7 +261,7 @@ FRAMEWORK_FILES = {
 FRAMEWORK_INDICATORS = {
     "flask":   ["flask", "Flask(", "from flask"],
     "fastapi": ["fastapi", "FastAPI(", "from fastapi"],
-    "django":  ["django", "urlpatterns", "from django"],
+    "django":  ["django", "urlpatterns", "from django", "settings.py", "manage.py"],
     "express": ["express()", "require('express')", "require(\"express\")"],
     "rails":   ["Rails.application.routes"],
 }
@@ -378,8 +376,12 @@ def github_analyze():
 
         # 3. Detect framework from file names first
         all_paths = [item["path"] for item in tree if item["type"] == "blob"]
+        PRIORITY = ["django", "flask", "fastapi", "express", "rails"]
+
         framework = "unknown"
-        for fw, target_files in FRAMEWORK_FILES.items():
+
+        for fw in PRIORITY:
+            target_files = FRAMEWORK_FILES[fw]
             if any(any(tf in p for p in all_paths) for tf in target_files):
                 framework = fw
                 break
