@@ -303,7 +303,11 @@ def github_get(url: str, token: str | None = None) -> dict:
         headers["Authorization"] = f"Bearer {token}"
     resp = req_lib.get(url, headers=headers, timeout=15)
     if resp.status_code == 403:
-        raise Exception("GitHub rate limit hit — add a Personal Access Token")
+        if "rate limit" in resp.text.lower():
+            raise Exception("GitHub rate limit exceeded — configure GITHUB_TOKEN in backend")
+        raise Exception("Access forbidden — check repository permissions")
+    if resp.status_code == 401:
+        raise Exception("Unauthorized — invalid or missing GitHub token")
     if resp.status_code == 404:
         raise Exception("Repository not found — check the URL or token for private repos")
     resp.raise_for_status()
@@ -334,7 +338,8 @@ def github_analyze():
         return jsonify({"error": "repo_url required"}), 400
 
     repo_url = data["repo_url"].strip().rstrip("/")
-    token = data.get("token", "").strip() or None
+    token = (data.get("token") or os.environ.get("GITHUB_TOKEN") or "").strip() or None
+    print("tokennnnnnnnnnnn", token)
 
     # Parse owner/repo from URL
     # Handles: https://github.com/owner/repo or github.com/owner/repo
