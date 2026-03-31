@@ -286,9 +286,25 @@ def parse_routes_from_content(content: str, filename: str, framework: str) -> li
     for pat in patterns:
         for m in re.finditer(pat, content, re.MULTILINE):
             groups = m.groups()
+
             if len(groups) == 1:
                 path = groups[0]
-                method = "GET"
+
+                # 🔥 SMART METHOD DETECTION (for Django mainly)
+                if framework == "django":
+                    if "request.method == 'POST'" in content or '"POST"' in content:
+                        method = "POST"
+                    elif "request.method == 'PUT'" in content:
+                        method = "PUT"
+                    elif "request.method == 'DELETE'" in content:
+                        method = "DELETE"
+                    elif "request.method == 'PATCH'" in content:
+                        method = "PATCH"
+                    else:
+                        method = "GET"
+                else:
+                    method = "GET"
+
             elif len(groups) == 2:
                 method_or_path, path_or_none = groups
                 if method_or_path.upper() in ("GET","POST","PUT","DELETE","PATCH","OPTIONS"):
@@ -303,6 +319,7 @@ def parse_routes_from_content(content: str, filename: str, framework: str) -> li
             # Normalise path
             if not path.startswith("/"):
                 path = "/" + path
+
             # Skip obviously invalid
             if any(c in path for c in ["*", "?", "[", "regex", "^$"]):
                 continue
@@ -310,10 +327,16 @@ def parse_routes_from_content(content: str, filename: str, framework: str) -> li
                 continue
 
             line_num = content[:m.start()].count("\n") + 1
-            routes.append({"method": method, "path": path, "file": filename, "line": line_num, "framework": framework})
+
+            routes.append({
+                "method": method,
+                "path": path,
+                "file": filename,
+                "line": line_num,
+                "framework": framework
+            })
 
     return routes
-
 def github_get(url: str, token: str | None = None) -> dict:
     """Make a GitHub API request."""
     headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "SentinelAPI/3.0"}
@@ -574,16 +597,23 @@ def proxy_test_all():
 
     results = []
     for route in data.get("routes", []):
-        result = _do_proxy_request(
-            base_url=data["base_url"],
-            method=route["method"],
-            path=route["path"],
-            headers={},
-            body=None,
-            project_id=data["project_id"],
-        )
-        results.append(result)
-        time.sleep(0.05)
+        methods_to_try = [route["method"]]
+
+        # 🔥 Try both for Django safety
+        if route["method"] == "GET":
+            methods_to_try.append("POST")
+
+        for m in methods_to_try:
+            result = _do_proxy_request(
+                base_url=data["base_url"],
+                method=m,
+                path=route["path"],
+                headers={},
+                body=None,
+                project_id=data["project_id"],
+            )
+            results.append(result)
+            time.sleep(0.05)
 
     return jsonify(results)
 
