@@ -17,10 +17,12 @@ logger = logging.getLogger("sentinel")
 app = Flask(__name__)
 
 CORS(app, resources={
-    r"/api/*": {"origins": "http://localhost:3000"},
-    r"/proxy/*": {"origins": "http://localhost:3000"},
-    r"/github/*": {"origins": "http://localhost:3000"},
-    r"/history": {"origins": "http://localhost:3000"},
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "https://api-failure-prediction-frontend.vercel.app"
+        ]
+    }
 })
 
 DATABASE  = os.environ.get("DATABASE_PATH", "metrics.db")
