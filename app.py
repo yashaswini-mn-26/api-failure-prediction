@@ -130,6 +130,24 @@ def _store_metric(rt, sc, cpu, mem, risk=0, pred=None, conf=None):
             (rt, sc, cpu, mem, risk, pred, conf)
         )
 
+# ── ADD THIS IMPORT (top with others) ─────────────────────────
+from urllib.parse import urlparse
+
+# ── ADD THIS FUNCTION (anywhere above proxy routes) ───────────
+def is_internal_url(base_url: str, request) -> bool:
+    try:
+        parsed = urlparse(base_url)
+        host = parsed.hostname
+        current_host = request.host.split(":")[0]
+
+        return (
+            host in ("localhost", "127.0.0.1") or
+            host == current_host or
+            (host and host.endswith("onrender.com") and current_host.endswith("onrender.com"))
+        )
+    except:
+        return True  # fail safe
+
 # ── EXISTING ROUTES ───────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -511,9 +529,19 @@ def _do_proxy_request(base_url: str, method: str, path: str, headers: dict, body
 
 @app.post("/proxy/test")
 def proxy_test():
-    """Test a single endpoint. Body: { project_id, base_url, method, path, headers?, body? }"""
     data = request.get_json(silent=True)
     if not data: return jsonify({"error": "JSON required"}), 400
+
+    base_url = data.get("base_url")
+
+    # 🔥 INTERNAL CHECK ADDED
+    if is_internal_url(base_url, request):
+        return jsonify({
+            "error": "Internal endpoints are not allowed for testing",
+            "status_code": 0,
+            "risk_score": 100
+        }), 400
+
     required = ["project_id", "base_url", "method", "path"]
     missing = [f for f in required if f not in data]
     if missing: return jsonify({"error": f"Missing: {missing}"}), 400
@@ -528,11 +556,19 @@ def proxy_test():
     )
     return jsonify(result)
 
+
 @app.post("/proxy/test-all")
 def proxy_test_all():
-    """Test all routes for a project. Body: { project_id, base_url, routes: [{method,path}] }"""
     data = request.get_json(silent=True)
     if not data: return jsonify({"error": "JSON required"}), 400
+
+    base_url = data.get("base_url")
+
+    # 🔥 INTERNAL CHECK ADDED
+    if is_internal_url(base_url, request):
+        return jsonify({
+            "error": "Internal endpoints are not allowed for testing"
+        }), 400
 
     results = []
     for route in data.get("routes", []):
@@ -545,7 +581,7 @@ def proxy_test_all():
             project_id=data["project_id"],
         )
         results.append(result)
-        time.sleep(0.05)  # small delay — don't hammer their server
+        time.sleep(0.05)
 
     return jsonify(results)
 
